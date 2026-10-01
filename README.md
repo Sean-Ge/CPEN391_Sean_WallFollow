@@ -18,15 +18,11 @@ L_max = 3.0 m
 preview_time = 0.3 s
 ```
 
-The idea is that when the car moves faster, we want the controller to look further ahead so that it can react to the upcoming wall geometry earlier.
+We used a preview time of 0.3 seconds since we felt that it was a good distance to predict for. Similar to our safety nodes TTC threshold of 0.3 seconds but with different meanings. 
 
-We started with a preview time of around 0.3 s because we thought it was a reasonable prediction horizon. It is also on a similar time scale to the 0.3 s TTC threshold we use in our safety node, although these two values have different purposes.
+After further testing we noticed that the higher you increase your look ahead distance, the car can become less stable. When L got higher than about 4m we noticed our car would begin to wiggle slightly left and right. 
 
-During testing, we found that making the look-ahead distance too large could actually make the car less stable. In particular, when `L` became larger than around 4 m, the car sometimes started making small repeated left-right steering corrections.
-
-From our testing, we think this happens because a very large look-ahead distance makes the controller react too strongly to wall geometry that is far away. It also makes small errors in the wall-angle estimation more noticeable.
-
-Because of this, we limit the maximum look-ahead distance to 3 m.
+This happens because a very large look-ahead distance makes the controller react too strongly to wall geometry that is far away. Also, it makes small errors in the wall-angle estimation more noticeable and makes over correction.
 
 ---
 
@@ -54,17 +50,17 @@ Therefore:
 theta = 40°
 ```
 
-We tested different values for this angle and found that it has a noticeable effect, especially on the Levine map.
+We experimented with varying thetas and found that it can affect performance somewhat significantly. Especailly on the Levine map. 
 
-For example, at the first sharp left turn in Levine, if `theta` is too large, the forward LiDAR beam may point toward another wall surface instead of the left wall that we actually want to follow.
+If theta is too big at the first sharp turn to the left in Levine, the front left lidar beam could point towards another wall. Which fails the left-wall following strategy and moves outside of the map.
 
-When this happens, the two LiDAR beams are no longer measuring the same wall, so the calculated wall angle can become inaccurate. This can make the car react too late or steer incorrectly through the corner.
+So our beams won't be reading off of the same wall and our wall angle could be inaccurate. Causing our car to turn late or incorrectly around the corner. 
 
-However, we also found that making `theta` too small is not ideal. If the two beams are too close together, the controller has less forward-looking information and may detect the upcoming turn too late.
+But we also found that having theta be too small can cause problems as well. Because our beams will be reading too close to each other and may not have enough foresight when it comes to corners. 
 
-After testing different values, we found that using a beam angle of 50°, which gives `theta = 40°`, gives us a good balance between detecting turns early and still measuring the correct wall.
+After some more experimenting we found that using a beam angle of 50 degrees (theta = 40 degreess) was best. 
 
-We also noticed that Spielberg is much less sensitive to this parameter. The wall geometry is easier for the two-ray wall-following method, so a wider range of beam angles can still work reasonably well.
+Spielburg wasn't very affected by changing theta that We were able to use a wider beam angle and still be able to read the walls correctly. 
 
 ---
 
@@ -90,7 +86,7 @@ Using a larger desired distance does not completely remove this problem, but it 
 
 ### 4. PID Controller Tuning
 
-We tuned the PID controller by testing the P, D, and I terms separately and observing how the car behaved on different parts of the track.
+We tuned the PID controller by testing the P, D, and I terms separately and observing how the car behaved on different parts of the track on different maps.
 
 Our final values are:
 
@@ -110,9 +106,9 @@ Kp = 1.0
 
 and then tried different values over multiple runs.
 
-We found that a larger proportional gain gives stronger steering corrections, which can help the car respond quickly to wall-distance errors. However, if `Kp` is too large, the steering becomes too aggressive and the car can start oscillating.
+We discovered that if you increase the proportional constant you can correct for error at a greater rate by moving the steering more. This could be useful to reduce wall distance error faster but if `Kp` is too big then the car will begin to swing back and forth. 
 
-On the other hand, if `Kp` is too small, the car reacts too slowly and may not turn enough when entering a corner.
+If `Kp` is too little then the car will move slowly and not turn as much as desired. 
 
 After multiple tests, we found that:
 
@@ -126,19 +122,19 @@ gave us the most stable overall performance.
 
 #### Derivative Gain
 
-At the beginning, we did not pay much attention to the derivative term and originally thought that proportional control might already be enough.
+We did not consider the derivative part to be of very importance at first. 
 
-However, when we increased the speed on Spielberg, especially above around 8 m/s, we noticed a problem after sharp turns.
+However, after increasing our speed on Spielberg. Above about 8 m/s. We saw an issue occur when exiting corners.
 
-After leaving a corner, the car was sometimes not pointing straight enough for the next straight section. The proportional controller would then try to correct the remaining error.
+Sometimes the car would leave the corner without being straight enough for the next straight away. Which would cause the P controller to act.
 
-Because the car was already moving quickly, the correction could become too strong. The car would then move too far in the opposite direction, causing the P controller to correct again.
+If our velocity was high enough the car may over correct to the other side. And our p controller would once again act.
 
-This created repeated left-right oscillation after the corner.
+This caused the car to continue oscillating to each side after exiting the corner.
 
-To reduce this behaviour, we added the derivative term.
+By implementing the derivative part into our equation we can reduce this issue.
 
-The derivative term reacts to how quickly the wall-following error is changing, so it helps reduce sudden steering corrections and provides damping.
+As we use derivative it will control the rate of change in our error for following the wall. This will reduce over corrections and add some damping to our car.
 
 We started testing with approximately:
 
@@ -166,17 +162,17 @@ For the integral term, we decided to use:
 Ki = 0.0
 ```
 
-The main reason is that the wall-following environment changes very quickly. The car is constantly moving between straights, corners, and different wall geometries.
+The main reason is that there are many changes in the wall following scenario. The car will always be driving through different walls some may be straight while others may be curved. 
 
-During our simulator testing, we did not notice a significant error that stayed in the same direction for a long period of time.
+Throughout our simulation testing we never saw an error occur that would travel one direction for an extended amount of time. 
 
-Since the integral term is mainly useful for correcting long-term steady-state error, we did not see much benefit from using it in our current controller.
+For this reason we did not find it beneficial to use the I portion of our controller. 
 
-We were also concerned that accumulated integral error could cause unnecessary overshoot when the track geometry suddenly changes.
+If the integral did accumulate error we may have seen overshooting of the wall. 
 
-Because of this, we decided to use a PD controller instead of a full PID controller.
+So for our application we used a PD controller. 
 
-The current values work well in our testing, but we do not consider them theoretically optimal. There is still room for further tuning and improvement.
+These are good numbers that we can work with for now. However we do not believe they are theoretically optimized. 
 
 ---
 
@@ -196,15 +192,15 @@ medium steering angle  → medium speed
 large steering angle   → low speed
 ```
 
-This means that when the car is travelling almost straight, we allow it to move faster.
+This means that if the car is moving somewhat straight, we can increase our speed.
 
-When the controller requests a larger steering angle, we treat this as an indication that the car is entering or travelling through a sharper turn, so we reduce the speed.
+If our controller tells us to steer more we assume our car is taking a tighter corner and decrease our speed.
 
-This gives us a simple way to slow down before and during corners without implementing a much more complicated speed-planning algorithm.
+This also allows us to decrease our speed when going into corners and through them. Without using a more advanced method of calculating our speeds.
 
-During our testing on Spielberg, we were able to complete the track while reaching peak speeds of around 8–10 m/s with suitable controller tuning.
+We were able to drive the full course on Spielberg achieving max speeds of ~8-10m/s. And 4.5m/s on Levine.
 
-For Levine, we had to use more conservative speeds because the map has more difficult wall geometry and sharper transitions.
+We had to slow down for Levine due to its more challenging wall map.
 
 ---
 
